@@ -1,0 +1,218 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "powerdns.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "powerdns.labels" . | nindent 4 }}
+    app.kubernetes.io/component: powerdns
+spec:
+  strategy:
+    type: {{ .Values.strategy }}
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "powerdns.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/config-zones: {{ include (print $.Template.BasePath "/configmap-zones.yaml") . | sha256sum }}
+      {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      labels:
+        {{- include "powerdns.labels" . | nindent 8 }}
+        app.kubernetes.io/component: powerdns
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 6 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      {{- if or .Values.persistence.enabled .Values.pdns.auth.zones }}
+      initContainers:
+      {{- if .Values.persistence.enabled }}
+      - name: prepare-db-dir
+        image: "{{ .Values.image.auth.repository }}:{{ .Values.image.auth.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.auth.pullPolicy }}
+        command:
+        - "/bin/sh"
+        - "-c"
+        args:
+        # TODO Check if chown command succeeds while using a security context with runAsNonRoot: true and runAsUser: 953 with all capabilities dropped
+        - |-
+          if [ -f /mount/powerdns/pdns.sqlite3 ]; then
+            echo " SQLite DB is already initialised. Skipping."
+          else
+            echo " Initialising the SQLite DB."
+            sqlite3 /mount/powerdns/pdns.sqlite3 < /usr/local/share/doc/pdns/schema.sqlite3.sql
+            chown 953:953 /mount/powerdns/pdns.sqlite3
+          fi
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 10 }}
+        volumeMounts:
+        - name: pdns-db
+          mountPath: /mount/powerdns
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+          limits:
+            memory: 128Mi
+      {{- end }}
+      {{- if .Values.pdns.auth.zones }}
+      - name: zones
+        image: "{{ .Values.image.auth.repository }}:{{ .Values.image.auth.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.auth.pullPolicy }}
+        command:
+        - "/bin/bash"
+        - "-c"
+        args:
+        {{- /* https://doc.powerdns.com/authoritative/manpages/pdnsutil.1.html */}}
+        - |-
+          pdnsutil list-all-zones
+          {{- range .Values.pdns.auth.zones }}
+          cat /tmp/zones-config/{{ .name }}.zone
+          pdnsutil list-all-zones
+          echo "Creating/Updating zone {{ .name }}..."
+          pdnsutil load-zone {{ .name }} /tmp/zones-config/{{ .name }}.zone
+          echo "Securing zone..."
+          pdnsutil secure-zone {{ .name }}
+          echo "Rectifying zone..."
+          pdnsutil rectify-zone {{ .name }}
+          echo "Zone details:"
+          pdnsutil list-zone {{ .name }}
+          pdnsutil show-zone {{ .name }}
+          pdnsutil check-all-zones
+          {{- end }}
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 10 }}
+        volumeMounts:
+        - name: pdns-db
+          mountPath: /var/lib/powerdns
+        - name: zones-config
+          mountPath: /tmp/zones-config
+          readOnly: true
+        resources:
+          requests:
+            cpu: 500m
+            memory: 128Mi
+          limits:
+            memory: 256Mi
+      {{- end }}
+      {{- end }}
+      containers:
+      - name: auth
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 10 }}
+        image: "{{ .Values.image.auth.repository }}:{{ .Values.image.auth.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.auth.pullPolicy }}
+        ports:
+        {{- range .Values.service.auth.ports }}
+        - name: {{ .name }}
+          containerPort: {{ .targetPort }}
+          protocol: {{ .protocol }}
+        {{- end }}
+        env:
+        {{- if .Values.pdns.auth.debug }}
+        - name: DEBUG_CONFIG
+          value: "yes"
+        {{- end }}
+        - name: PDNS_AUTH_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.pdns.auth.api.existingSecret.name }}
+              key: {{ .Values.pdns.auth.api.existingSecret.key }}
+        livenessProbe:
+          {{- toYaml .Values.livenessProbe.auth | nindent 10 }}
+        readinessProbe:
+          {{- toYaml .Values.readinessProbe.auth | nindent 10 }}
+        resources:
+          {{- toYaml .Values.resources.auth | nindent 10 }}
+        volumeMounts:
+        {{- if .Values.persistence.enabled }}
+        - name: pdns-db
+          mountPath: /var/lib/powerdns
+        {{- end }}
+        - name: config-volume-auth
+          mountPath: /etc/powerdns/pdns.conf
+          subPath: pdns.conf
+          readOnly: true
+        {{- with .Values.volumeMounts.auth }}
+          {{- toYaml . | nindent 12 }}
+        {{- end }}
+      - name: recursor
+        securityContext:
+          {{- toYaml .Values.securityContext | nindent 10 }}
+        image: "{{ .Values.image.recursor.repository }}:{{ .Values.image.recursor.tag | default .Chart.AppVersion }}"
+        imagePullPolicy: {{ .Values.image.recursor.pullPolicy }}
+        ports:
+        {{- range .Values.service.recursor.ports }}
+        - name: {{ .name }}
+          containerPort: {{ .targetPort }}
+          protocol: {{ .protocol }}
+        {{- end }}
+        env:
+        {{- if .Values.pdns.recursor.debug }}
+        - name: DEBUG_CONFIG
+          value: "yes"
+        {{- end }}
+        - name: PDNS_RECURSOR_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: {{ .Values.pdns.recursor.api.existingSecret.name }}
+              key: {{ .Values.pdns.recursor.api.existingSecret.key }}
+        livenessProbe:
+          {{- toYaml .Values.livenessProbe.recursor | nindent 10 }}
+        readinessProbe:
+          {{- toYaml .Values.readinessProbe.recursor | nindent 10 }}
+        resources:
+          {{- toYaml .Values.resources.recursor | nindent 10 }}
+        volumeMounts:
+        - name: config-volume-recursor
+          mountPath: /etc/powerdns/recursor.conf
+          subPath: recursor.conf
+          readOnly: true
+        {{- with .Values.volumeMounts.recursor }}
+          {{- toYaml . | nindent 12 }}
+        {{- end }}
+      volumes:
+      {{- if .Values.pdns.auth.zones }}
+      - name: zones-config
+        configMap:
+          name: {{ include "powerdns.auth.fullname" . }}-zones
+          # -r-x------
+          defaultMode: 500
+      {{- end }}
+      - name: config-volume-auth
+        configMap:
+          name: {{ include "powerdns.auth.fullname" . }}
+      - name: config-volume-recursor
+        configMap:
+          name: {{ include "powerdns.recursor.fullname" . }}
+      {{- if .Values.persistence.enabled }}
+      - name: pdns-db
+        persistentVolumeClaim:
+          claimName: {{ include "powerdns.auth.fullname" . }}-db
+      {{- end }}
+      {{- with .Values.volumes }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

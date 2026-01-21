@@ -1,0 +1,132 @@
+---
+pdns:
+  auth:
+    debug: true
+    zones:
+    - name: test.internal
+      zoneFile: |-
+        $ORIGIN test.internal.
+        $TTL 3600
+        @   IN  SOA ns1.test.internal. admin.test.internal. 1 3600 600 86400 600
+            IN  NS  ns1.test.internal.
+        ns1 IN  A   192.168.1.10
+  recursor:
+    # https://docs.powerdns.com/recursor/settings.html#allow-from
+    customAllowFrom:
+    - 127.0.0.0/8
+    - 10.0.0.0/8
+    - 100.64.0.0/10
+    - 169.254.0.0/16
+    - 192.168.0.0/16
+    - 172.16.0.0/12
+    - ::1/128, fc00::/7
+    - fe80::/10
+    - 138.199.128.208/32
+persistence:
+  storageClass: "standard"
+
+service:
+  # auth:
+  #   annotations:
+  #     # https://github.com/hetznercloud/hcloud-cloud-controller-manager/blob/main/docs/load_balancers.md
+  #     # https://pkg.go.dev/github.com/hetznercloud/hcloud-cloud-controller-manager/internal/annotation#Name
+  #     load-balancer.hetzner.cloud/location: fsn1
+  #     # configures the Load Balancer to use the private IP for Load Balancer server targets.
+  #     load-balancer.hetzner.cloud/use-private-ip: "true"
+  #     # load-balancer.hetzner.cloud/network-zone: eu-central
+  recursor:
+    annotations:
+      # https://github.com/hetznercloud/hcloud-cloud-controller-manager/blob/main/docs/load_balancers.md
+      # https://pkg.go.dev/github.com/hetznercloud/hcloud-cloud-controller-manager/internal/annotation#Name
+      load-balancer.hetzner.cloud/location: fsn1
+      # configures the Load Balancer to use the private IP for Load Balancer server targets.
+      load-balancer.hetzner.cloud/use-private-ip: "true"
+      # load-balancer.hetzner.cloud/network-zone: eu-central
+    ports:
+    - name: webserver
+      protocol: TCP
+      port: 8082
+      targetPort: 8082
+    - name: dns-tcp
+      protocol: TCP
+      port: 53
+      targetPort: 8053
+      # - name: dns-udp
+      #   protocol: UDP
+      #   port: 54
+      #   targetPort: 8054
+
+ingress:
+  auth:
+    enabled: true
+    className: "nginx"
+    annotations:
+      cert-manager.io/cluster-issuer: "ca-issuer"
+      nginx.ingress.kubernetes.io/backend-protocol: HTTPS
+    hosts:
+    - host: pdns-auth.capi-mgt.unbyte.internal
+      paths:
+      - path: /
+        pathType: ImplementationSpecific
+    tls:
+    - secretName: pdns-auth.capi-mgt.unbyte.internal-tls
+      hosts:
+      - pdns-auth.capi-mgt.unbyte.internal
+
+resources:
+  auth:
+    limits:
+      cpu: 100m
+      memory: 128Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  recursor:
+    limits:
+      cpu: 100m
+      memory: 128Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+
+livenessProbe:
+  auth:
+    exec:
+      command:
+      - /bin/sh
+      - -c
+      - |
+        curl -s -o /dev/null -w "%{http_code}" -H "X-API-Key: $PDNS_AUTH_API_KEY" http://localhost:8081/api/v1/servers/localhost | grep -q 200
+  recursor:
+    exec:
+      command:
+      - /bin/sh
+      - -c
+      - |
+        curl -s -o /dev/null -w "%{http_code}" -H "X-API-Key: $PDNS_RECURSOR_API_KEY" http://localhost:8082/api/v1/servers/localhost | grep -q 200
+readinessProbe:
+  auth:
+    exec:
+      command:
+      - /bin/sh
+      - -c
+      - |
+        curl -s -o /dev/null -w "%{http_code}" -H "X-API-Key: $PDNS_AUTH_API_KEY" http://localhost:8081/api/v1/servers/localhost | grep -q 200
+  recursor:
+    exec:
+      command:
+      - /bin/sh
+      - -c
+      - |
+        curl -s -o /dev/null -w "%{http_code}" -H "X-API-Key: $PDNS_RECURSOR_API_KEY" http://localhost:8082/api/v1/servers/localhost | grep -q 200
+
+image:
+  auth:
+    repository: harbor.devops1.pbm.sh/proxy-registry.gitlab.com/unbytede/unbyte-orbit/container-images/powerdns-auth
+    tag: main
+  recursor:
+    repository: harbor.devops1.pbm.sh/proxy-registry.gitlab.com/unbytede/unbyte-orbit/container-images/powerdns-recursor
+    tag: main
+
+imagePullSecrets:
+- name: gitlab-registry-secret

@@ -1,0 +1,15 @@
+{{- if .Values.pdns.auth.zones }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "powerdns.auth.fullname" . }}-zones
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "powerdns.auth.labels" . | nindent 4 }}
+data:
+  {{- range .Values.pdns.auth.zones }}
+  {{ .name }}.zone: |-
+    {{- .zoneFile | nindent 4}}
+  {{- end }}
+{{- end }}

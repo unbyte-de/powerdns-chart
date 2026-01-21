@@ -1,0 +1,44 @@
+{{- if .Values.ingress.auth.enabled -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "powerdns.auth.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "powerdns.auth.labels" . | nindent 4 }}
+  {{- with .Values.ingress.auth.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.ingress.auth.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- if .Values.ingress.auth.tls }}
+  tls:
+  {{- range .Values.ingress.auth.tls }}
+  - hosts:
+    {{- range .hosts }}
+    - {{ . | quote }}
+    {{- end }}
+    secretName: {{ .secretName }}
+  {{- end }}
+  {{- end }}
+  rules:
+  {{- range .Values.ingress.auth.hosts }}
+  - host: {{ .host | quote }}
+    http:
+      paths:
+      {{- range .paths }}
+      - path: {{ .path }}
+        {{- with .pathType }}
+        pathType: {{ . }}
+        {{- end }}
+        backend:
+          service:
+            name: {{ include "powerdns.auth.fullname" $ }}
+            port:
+              name: webserver
+      {{- end }}
+  {{- end }}
+{{- end }}
