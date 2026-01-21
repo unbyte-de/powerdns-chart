@@ -122,11 +122,11 @@ readinessProbe:
 
 image:
   auth:
-    repository: harbor.devops1.pbm.sh/proxy-registry.gitlab.com/unbytede/unbyte-orbit/container-images/powerdns-auth
-    tag: main
+    repository: ghcr.io/unbyte-de/container-images/powerdns-auth
+    tag: 0.1.0
   recursor:
-    repository: harbor.devops1.pbm.sh/proxy-registry.gitlab.com/unbytede/unbyte-orbit/container-images/powerdns-recursor
-    tag: main
+    repository: ghcr.io/unbyte-de/container-images/powerdns-recursor
+    tag: 0.1.0
 
 imagePullSecrets:
 - name: gitlab-registry-secret
