@@ -1,5 +1,5 @@
 ---
-name: Lint powerdns chart
+name: Lint PowerDNS chart
 
 on:
   pull_request:

@@ -1,5 +1,5 @@
 ---
-name: Release Charts
+name: Release PowerDNS Chart
 
 on:
   push:
