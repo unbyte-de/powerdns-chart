@@ -1,0 +1,22 @@
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "powerdns.auth.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "powerdns.auth.labels" . | nindent 4 }}
+data:
+  pdns.conf: |-
+    {{- .Values.pdns.auth.conf | nindent 4}}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "powerdns.recursor.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "powerdns.recursor.labels" . | nindent 4 }}
+data:
+  recursor.conf: |-
+    {{- ( tpl .Values.pdns.recursor.conf .) | nindent 4}}

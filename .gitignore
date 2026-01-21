@@ -1,0 +1,6 @@
+# Helm artifacts
+*.tgz
+# powerdns/*/charts/
+# powerdns/*/Chart.lock
+local.md
+todos.md

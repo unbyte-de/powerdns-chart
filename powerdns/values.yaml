@@ -1,0 +1,232 @@
+---
+# https://github.com/PowerDNS/pdns/blob/auth-4.9.3/Docker-README.md
+# https://github.com/PowerDNS/pdns/blob/auth-4.9.3/docker-compose.yml
+# https://github.com/PowerDNS/pdns/blob/auth-4.9.3/Dockerfile-auth
+# https://github.com/PowerDNS/pdns/tree/auth-4.9.3/dockerdata
+# https://github.com/PowerDNS/pdns/blob/rec-4.9.9/Dockerfile-recursor
+# https://github.com/PowerDNS/pdns/tree/rec-4.9.9/dockerdata
+pdns:
+  # PowerDNS Authoritative Server
+  # Resolves queries for an internal domain because it's authoritative for that domain.
+  auth:
+    debug: false
+    api:
+      existingSecret:
+        name: pdns-api-key
+        key: PDNS_AUTH_API_KEY
+    # https://github.com/PowerDNS/pdns/blob/auth-4.9.3/dockerdata/pdns.conf
+    # https://github.com/PowerDNS/pdns/blob/auth-4.9.3/dockerdata/startup.py#L28-L34
+    # https://doc.powerdns.com/authoritative/settings.html
+    conf: |
+      local-port=8052
+      local-address=0.0.0.0, ::
+      launch=gsqlite3
+      gsqlite3-dnssec
+      gsqlite3-database=/var/lib/powerdns/pdns.sqlite3
+      include-dir=/etc/powerdns/pdns.d
+      # For ExternalDNS
+      dnsupdate=yes
+      allow-dnsupdate-from=127.0.0.0/8,::1
+      # Log settings
+      # log-dns-queries=yes
+      # log-dns-details=yes
+      # loglevel=7
+    zones: []
+    # https://en.wikipedia.org/wiki/Zone_file
+    # - name: test.internal
+    #   zoneFile: |-
+  # PowerDNS Recursor
+  # Handles all other DNS queries by forwarding them to the internet.
+  # Queries for internal domains are forwarded by the recursor to the authoritative server.
+  recursor:
+    debug: false
+    api:
+      existingSecret:
+        name: pdns-api-key
+        key: PDNS_RECURSOR_API_KEY
+    customAllowFrom: []
+    # https://github.com/PowerDNS/pdns/blob/auth-4.9.3/dockerdata/recursor.conf
+    # https://github.com/PowerDNS/pdns/blob/auth-4.9.3/dockerdata/startup.py#L18-L23
+    # https://docs.powerdns.com/recursor/settings.html
+    # This config is first templated.
+    conf: |
+      local-port=8053
+      local-address=0.0.0.0, ::
+      include-dir=/etc/powerdns/recursor.d
+      # Forward everything except `unbyte.internal` to external DNS resolvers
+      forward-zones-recurse=.=8.8.8.8;8.8.4.4
+      # Forward `unbyte.internal` to the authoritative server
+      forward-zones=unbyte.internal=127.0.0.1:8052;[::1]:8052
+      {{- if .Values.pdns.recursor.customAllowFrom }}
+      allow-from={{ .Values.pdns.recursor.customAllowFrom | join ", " }}
+      {{- else }}
+      # allow-from=0.0.0.0/0, ::/0
+      {{- end }}
+      # proxy-protocol-from=0.0.0.0/0, ::/0
+      setuid=pdns
+      setgid=pdns
+      dnssec=off
+      # Log settings
+      # loglevel=9
+      # log-common-errors=yes
+      # trace=yes
+
+strategy: RollingUpdate
+
+# For the db of authoritative server
+persistence:
+  enabled: true
+  size: 2Gi
+  storageClass: ""
+
+replicaCount: 1
+
+image:
+  # https://hub.docker.com/r/powerdns/pdns-auth-49/tags
+  # https://doc.powerdns.com/authoritative/changelog/
+  auth:
+    repository: powerdns/pdns-auth-49
+    pullPolicy: IfNotPresent
+    # Overrides the image tag whose default is the chart appVersion.
+    # tag: "4.9.5"
+  # https://hub.docker.com/r/powerdns/pdns-recursor-49/tags
+  # https://doc.powerdns.com/recursor/changelog/
+  recursor:
+    repository: powerdns/pdns-recursor-49
+    pullPolicy: IfNotPresent
+    # Overrides the image tag whose default is the chart appVersion.
+    tag: "4.9.9"
+imagePullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  fsGroup: 953
+
+securityContext:
+  capabilities:
+    drop:
+    - ALL
+    # add:
+    # - NET_BIND_SERVICE
+  # TODO
+  # readOnlyRootFilesystem: true
+  runAsNonRoot: true
+  runAsUser: 953
+
+service:
+  auth:
+    type: ClusterIP
+    annotations: {}
+    ports:
+    # https://doc.powerdns.com/authoritative/http-api/
+    - name: webserver
+      protocol: TCP
+      port: 8081
+      targetPort: 8081
+    - name: dns-tcp
+      protocol: TCP
+      port: 52
+      targetPort: 8052
+    - name: dns-udp
+      protocol: UDP
+      port: 52
+      targetPort: 8052
+  recursor:
+    type: LoadBalancer
+    externalTrafficPolicy: Local
+    annotations: {}
+    ports:
+    - name: webserver
+      protocol: TCP
+      port: 8082
+      targetPort: 8082
+    - name: dns-tcp
+      protocol: TCP
+      port: 53
+      targetPort: 8053
+    - name: dns-udp
+      protocol: UDP
+      port: 53
+      targetPort: 8053
+
+# This block is for setting up the ingress for more information can be found here: https://kubernetes.io/docs/concepts/services-networking/ingress/
+ingress:
+  auth:
+    enabled: false
+    className: ""
+    annotations: {}
+    # annotations:
+    #   kubernetes.io/ingress.class: nginx
+    #   kubernetes.io/tls-acme: "true"
+    hosts:
+    - host: chart-example.local
+      paths:
+      - path: /
+        pathType: ImplementationSpecific
+    tls: []
+    #  - secretName: chart-example-tls
+    #    hosts:
+    #      - chart-example.local
+
+resources:
+  auth: {}
+  recursor: {}
+  # We usually recommend not to specify default resources and to leave this as a conscious
+  # choice for the user. This also increases chances charts run on environments with little
+  # resources, such as Minikube. If you do want to specify resources, uncomment the following
+  # lines, adjust them as necessary, and remove the curly braces after 'resources:'.
+  # limits:
+  #   cpu: 100m
+  #   memory: 128Mi
+  # requests:
+  #   cpu: 100m
+  #   memory: 128Mi
+
+# This is to setup the liveness and readiness probes more information can be found here:
+# https://kubernetes.io/docs/tasks/configure-pod-container/configure-liveness-readiness-startup-probes/
+livenessProbe:
+  auth: {}
+  # auth:
+  #   httpGet:
+  #     path: /
+  #     port: webserver
+  recursor: {}
+  # recursor:
+  #   httpGet:
+  #     path: /
+  #     port: webserver
+readinessProbe:
+  auth: {}
+  # auth:
+  #   httpGet:
+  #     path: /
+  #     port: webserver
+  recursor: {}
+  # recursor:
+  #   httpGet:
+  #     path: /
+  #     port: webserver
+
+# Additional volumes on the output Deployment definition.
+volumes: []
+# - name: foo
+#   secret:
+#     secretName: mysecret
+#     optional: false
+
+# Additional volumeMounts on the output Deployment definition.
+volumeMounts:
+  auth: []
+  recursor: []
+# - name: foo
+#   mountPath: "/etc/foo"
+#   readOnly: true
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
