@@ -6,11 +6,11 @@
 
 # PowerDNS Helm Chart
 
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![PowerDNS](https://img.shields.io/badge/PowerDNS-4.9.x-002B5C)](https://www.powerdns.com/)
 [![Helm](https://img.shields.io/badge/Helm-3.x-0f1689.svg)](https://helm.sh)
 [![GHCR](https://img.shields.io/badge/GHCR-ghcr.io-181717?logo=github&logoColor=white&label=chart)](https://github.com/orgs/unbyte-de/packages?repo_name=powerdns-chart)
 [![Kubernetes](https://img.shields.io/badge/Kubernetes-1.31+-326CE5?logo=kubernetes&logoColor=white)](https://kubernetes.io)
+<!-- [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE) -->
 <!-- [![GitHub release](https://img.shields.io/github/v/release/unbyte/powerdns-chart)](https://github.com/unbyte/powerdns-chart/releases) -->
 <!-- [![GitHub Actions](https://img.shields.io/github/actions/workflow/status/unbyte/powerdns-chart/lint.yaml?label=lint)](https://github.com/unbyte/powerdns-chart/actions/workflows/lint.yaml) -->
 <!-- [![Pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit)](https://github.com/pre-commit/pre-commit) -->
