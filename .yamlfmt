@@ -9,7 +9,7 @@ match_type: doublestar
 # include: []
 # - "**/*.{yaml,yml,yamlfmt}"
 exclude:
-- "powerdns/templates/*"  # exclude Helm templates
+- "powerdns/templates/*" # exclude Helm templates
 extensions:
 - .yaml
 - .yml
