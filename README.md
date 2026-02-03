@@ -68,3 +68,13 @@ Or install directly from this repository:
 ```bash
 helm install powerdns ./powerdns
 ```
+
+## Local Developmemt
+
+To run yamlfmt locally:
+
+```sh
+yamlfmt "**/*.{yaml,yml,yamlfmt}"
+# Or remove -quiet and/or -lint flag of yamlfmt in .pre-commit-config.yaml and run
+pre-commit run --all-files
+```
